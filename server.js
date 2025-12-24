@@ -1,27 +1,30 @@
+// server.js
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
+const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*" } // Allow connections from anywhere
-});
+const io = new Server(server);
+
+// Serve the static HTML files (sender and receiver)
+app.use(express.static(path.join(__dirname, "public")));
 
 io.on("connection", (socket) => {
-  console.log("Client connected:", socket.id);
+    console.log("User connected:", socket.id);
 
-  // Identify who is who
-  socket.on("register-classroom", (roomID) => {
-    socket.join(roomID);
-    console.log(`Socket ${socket.id} joined room ${roomID}`);
-  });
+    // Join a specific room (e.g., 'Classroom 101')
+    socket.on("join-room", (roomID) => {
+        socket.join(roomID);
+        console.log(`Socket ${socket.id} joined ${roomID}`);
+    });
 
-  // Relay Audio Stream
-  // We receive binary audio blobs and broadcast them immediately
-  socket.on("audio-stream", ({ roomID, audioData }) => {
-    socket.to(roomID).emit("play-audio", audioData);
-  });
+    // Relay audio from Sender -> Receiver
+    socket.on("audio-chunk", ({ roomID, chunk }) => {
+        // Broadcast to everyone in the room EXCEPT the sender
+        socket.to(roomID).emit("play-chunk", chunk);
+    });
 });
 
 const PORT = process.env.PORT || 3000;
