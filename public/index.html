@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Intercom Sender</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f0f0f0; }
+        #talkBtn { 
+            width: 250px; height: 250px; border-radius: 50%; border: none;
+            background-color: #ff4444; color: white; font-size: 24px; font-weight: bold;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2); user-select: none; -webkit-user-select: none;
+            transition: transform 0.1s;
+        }
+        #talkBtn:active { transform: scale(0.95); background-color: #cc0000; }
+        .recording { animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 20px rgba(255, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0); } }
+    </style>
+</head>
+<body>
+
+    <button id="talkBtn">HOLD TO TALK</button>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const ROOM_ID = "Classroom-101"; 
+        let mediaRecorder;
+
+        const btn = document.getElementById('talkBtn');
+
+        // Request Mic Permissions immediately
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                // We use a small timeslice (250ms) to send audio in near real-time
+                mediaRecorder = new MediaRecorder(stream);
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        socket.emit('audio-chunk', { roomID: ROOM_ID, chunk: event.data });
+                    }
+                };
+            })
+            .catch(err => alert("Microphone access denied!"));
+
+        function startRecording(e) {
+            e.preventDefault();
+            if (mediaRecorder && mediaRecorder.state === "inactive") {
+                // Start recording and slice into 250ms chunks
+                mediaRecorder.start(250); 
+                btn.innerText = "BROADCASTING...";
+                btn.classList.add("recording");
+            }
+        }
+
+        function stopRecording(e) {
+            e.preventDefault();
+            if (mediaRecorder && mediaRecorder.state === "recording") {
+                mediaRecorder.stop();
+                btn.innerText = "HOLD TO TALK";
+                btn.classList.remove("recording");
+            }
+        }
+
+        // Support Mouse and Touch
+        btn.addEventListener('mousedown', startRecording);
+        btn.addEventListener('mouseup', stopRecording);
+        btn.addEventListener('touchstart', startRecording);
+        btn.addEventListener('touchend', stopRecording);
+        
+        socket.emit('join-room', 'Sender-Room');
+    </script>
+</body>
+</html>
