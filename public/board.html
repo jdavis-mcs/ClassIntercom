@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Classroom Intercom Receiver</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 50px; background: #222; color: white; }
+        #status { font-size: 2em; margin-top: 20px; color: red; font-weight: bold; }
+        button { padding: 20px 40px; font-size: 1.5em; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 8px; }
+        .hidden-hack { display: none; }
+    </style>
+</head>
+<body>
+    <h1>🔊 Classroom 101 Receiver</h1>
+    <p>Click the button below once to enable audio. <br>You can then minimize this tab.</p>
+    
+    <button id="startBtn">Enable Intercom</button>
+    <div id="status">OFFLINE</div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const ROOM_ID = "Classroom-101"; // Change this for different rooms
+        let audioCtx;
+        let nextTime = 0; // Tracks when the next chunk should play
+
+        const statusDiv = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+
+        // 1. THE "SILENCE HACK" to keep tab alive
+        function keepAlive() {
+            // Create a fake audio source that plays nothing forever
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            // Set volume to almost zero (not 0, or Chrome might optimize it out)
+            gainNode.gain.value = 0.0001; 
+            
+            oscillator.start();
+            console.log("Silent Keep-Alive Active");
+        }
+
+        // 2. Initialize Audio Context on User Click
+        startBtn.addEventListener('click', () => {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            keepAlive(); // Trigger the hack
+            
+            // Join the socket room
+            socket.emit('join-room', ROOM_ID);
+            
+            startBtn.style.display = 'none';
+            statusDiv.innerText = "🟢 LISTENING...";
+            statusDiv.style.color = "#0f0";
+        });
+
+        // 3. Receive and Queue Audio Chunks
+        socket.on('play-chunk', async (chunk) => {
+            if (!audioCtx) return;
+
+            // Convert blob to array buffer if needed (Socket.io sends ArrayBuffer usually)
+            const audioBuffer = await audioCtx.decodeAudioData(chunk);
+
+            const source = audioCtx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioCtx.destination);
+
+            // Schedule the audio to play smoothly
+            // If nextTime is in the past, reset it to now
+            if (nextTime < audioCtx.currentTime) {
+                nextTime = audioCtx.currentTime;
+            }
+            
+            source.start(nextTime);
+            // Advance time for the next chunk
+            nextTime += source.buffer.duration;
+        });
+
+        socket.on('disconnect', () => {
+            statusDiv.innerText = "🔴 DISCONNECTED";
+            statusDiv.style.color = "red";
+        });
+        
+        socket.on('connect', () => {
+            if(audioCtx) {
+                 statusDiv.innerText = "🟢 LISTENING...";
+                 statusDiv.style.color = "#0f0";
+            }
+        });
+    </script>
+</body>
+</html>
